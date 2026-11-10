@@ -1,38 +1,41 @@
-// Renders a per-outcome handoff screen via the `genui` SDK.
+// Renders a per-outcome handoff screen with the A2UI Dart SDKs
+// (`a2ui_core` and `a2ui_flutter`).
 //
 // ─── Stream path (a2uiMessageStream != null) ────────────────────────────────
 //
-// Each text chunk from the stream is fed into
-// [genui.A2uiTransportAdapter.addChunk]. Parsed [genui.A2uiMessage]s are
-// emitted on the adapter's `incomingMessages` stream and forwarded to
-// [genui.SurfaceController.handleMessage] — exactly the pattern used by
-// [genui.Conversation].
+// Each text chunk from the stream is one A2UI wire envelope. It is decoded,
+// parsed with [AgentToRendererMessage.fromJson] and passed to
+// [MessageProcessor.processMessages]. A chunk that is not a valid envelope
+// is logged and skipped.
 //
 // ─── Fallback path ──────────────────────────────────────────────────────────
 //
 // If [a2uiMessageStream] is null, errors, or completes without dispatching
-// any messages, a hand-crafted v1 [genui.CreateSurface] +
-// [genui.UpdateComponents] pair is dispatched directly. The fallback tree
-// includes a Button with the configured restart action so the in-Surface
-// Restart still works regardless of which path rendered.
+// any messages, a hand-crafted v1 `createSurface` + `updateComponents` pair
+// is processed directly. The fallback tree includes a Button with the
+// configured restart action so the in-Surface Restart still works
+// regardless of which path rendered.
 //
 // ─── Action handler ─────────────────────────────────────────────────────────
 //
 // [A2uiActionHandler] is created in [initState] and wired before any
-// messages are dispatched. It subscribes to [SurfaceController.onSubmit]
-// and calls [onRestart] when the configured action arrives.
+// messages are dispatched. It subscribes to the processor's `onAction`
+// events and calls [onRestart] when the configured action arrives.
 
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:a2ui_core/a2ui_core.dart';
+import 'package:a2ui_flutter/a2ui_flutter.dart';
+import 'package:a2ui_flutter/v0_9/basic_catalog.dart' as v0_9;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:genui/genui.dart' as genui;
 
 import 'a2ui_action_handler.dart';
 import 'a2ui_outcome_prompt.dart';
 import 'simulated_handoff.dart';
 
-/// Renders a per-outcome handoff screen via Google's `genui` SDK.
+/// Renders a per-outcome handoff screen with the A2UI Dart SDKs.
 class A2uiOutcomeRenderer extends StatefulWidget {
   const A2uiOutcomeRenderer({
     required this.outcomeId,
@@ -53,8 +56,8 @@ class A2uiOutcomeRenderer extends StatefulWidget {
 
   final VoidCallback onRestart;
 
-  /// When non-null, chunks from this stream are fed into the transport
-  /// adapter. When null (or when the stream errors / completes empty),
+  /// When non-null, each chunk from this stream is processed as one A2UI
+  /// wire envelope. When null (or when the stream errors / completes empty),
   /// the v1 hand-crafted tree is dispatched.
   final Stream<String>? a2uiMessageStream;
 
@@ -72,12 +75,10 @@ class A2uiOutcomeRenderer extends StatefulWidget {
 }
 
 class _A2uiOutcomeRendererState extends State<A2uiOutcomeRenderer> {
-  late final genui.SurfaceController _controller;
+  late final MessageProcessor<ComponentImplementation> _processor;
   late final String _surfaceId;
   late final A2uiActionHandler _actionHandler;
 
-  genui.A2uiTransportAdapter? _transportAdapter;
-  StreamSubscription<genui.A2uiMessage>? _incomingMessagesSub;
   StreamSubscription<String>? _streamSub;
 
   bool _receivedAnyMessage = false;
@@ -87,12 +88,20 @@ class _A2uiOutcomeRendererState extends State<A2uiOutcomeRenderer> {
   void initState() {
     super.initState();
     _surfaceId = 'outcome_${widget.outcomeId}';
-    _controller = genui.SurfaceController(
-      catalogs: [genui.BasicCatalogItems.asCatalog()],
+    _processor = MessageProcessor<ComponentImplementation>(
+      // The prompt asks for genui's old basic catalog id, which the SDK's
+      // v0.9 basic catalog does not register; serve the basic catalog under
+      // that id.
+      catalogs: [v0_9.basicCatalog().derive(catalogId: kA2uiBasicCatalogId)],
+      validationConfig: ValidationConfig.relaxed,
+      reportErrorsOnly: true,
+      // A rejected message leaves the surface unchanged; log why.
+      onError: (error) =>
+          debugPrint('A2uiOutcomeRenderer: ${error.code}: ${error.message}'),
     );
 
     _actionHandler = A2uiActionHandler(
-      controller: _controller,
+      controller: _processor,
       onRestart: widget.onRestart,
       actionName: widget.restartActionName,
     );
@@ -109,26 +118,13 @@ class _A2uiOutcomeRendererState extends State<A2uiOutcomeRenderer> {
   void dispose() {
     _actionHandler.dispose();
     _streamSub?.cancel();
-    _incomingMessagesSub?.cancel();
-    _transportAdapter?.dispose();
-    _controller.dispose();
+    _processor.dispose();
     super.dispose();
   }
 
   void _startStreamPath(Stream<String> stream) {
-    _transportAdapter = genui.A2uiTransportAdapter();
-
-    _incomingMessagesSub = _transportAdapter!.incomingMessages.listen(
-      (message) {
-        _controller.handleMessage(message);
-        if (!_receivedAnyMessage) {
-          setState(() => _receivedAnyMessage = true);
-        }
-      },
-    );
-
     _streamSub = stream.listen(
-      (chunk) => _transportAdapter!.addChunk(chunk),
+      _handleChunk,
       onError: (Object error, StackTrace stack) {
         debugPrint(
           'A2uiOutcomeRenderer: stream error — falling back to v1 tree. '
@@ -137,22 +133,39 @@ class _A2uiOutcomeRendererState extends State<A2uiOutcomeRenderer> {
         _applyFallback();
       },
       onDone: () {
-        // The A2uiParserTransformer pipeline delivers parsed events on
-        // the next microtask cycle; defer the "no messages" check by one
-        // microtask so any pending dispatch can reach _receivedAnyMessage.
-        Future<void>.microtask(() {
-          if (!mounted) return;
-          if (!_receivedAnyMessage) {
-            debugPrint(
-              'A2uiOutcomeRenderer: stream completed with no messages — '
-              'falling back to v1 tree.',
-            );
-            _applyFallback();
-          }
-        });
+        if (!mounted) return;
+        if (!_receivedAnyMessage) {
+          debugPrint(
+            'A2uiOutcomeRenderer: stream completed with no messages — '
+            'falling back to v1 tree.',
+          );
+          _applyFallback();
+        }
       },
       cancelOnError: true,
     );
+  }
+
+  void _handleChunk(String chunk) {
+    final AgentToRendererMessage message;
+    try {
+      message = switch (jsonDecode(chunk)) {
+        final Map<String, dynamic> json => AgentToRendererMessage.fromJson(
+          json,
+        ),
+        _ => throw const FormatException('Expected a JSON object.'),
+      };
+    } on Exception catch (error) {
+      debugPrint(
+        'A2uiOutcomeRenderer: skipping a chunk that is not an A2UI message. '
+        'Error: $error',
+      );
+      return;
+    }
+    _processor.processMessages(message);
+    if (!_receivedAnyMessage) {
+      setState(() => _receivedAnyMessage = true);
+    }
   }
 
   void _applyFallback() {
@@ -161,60 +174,60 @@ class _A2uiOutcomeRendererState extends State<A2uiOutcomeRenderer> {
   }
 
   void _seedFallbackSurface() {
-    _controller.handleMessage(
-      genui.CreateSurface(
-        surfaceId: _surfaceId,
-        catalogId: kA2uiBasicCatalogId,
-      ),
-    );
-
+    final version = A2uiProtocolVersion.v0_9.jsonValue;
     final headline = widget.handoff?.label ?? 'Form completed';
     final subtext = widget.handoff != null
         ? 'Outcome reached: ${widget.outcomeId}.'
         : 'Outcome reached: ${widget.outcomeId} (no handoff registered).';
 
-    _controller.handleMessage(
-      genui.UpdateComponents(
-        surfaceId: _surfaceId,
-        components: [
-          const genui.Component(
-            id: 'root',
-            type: 'Column',
-            properties: {
-              'distribution': 'center',
-              'alignment': 'center',
+    _processor.processMessages([
+      {
+        'version': version,
+        'createSurface': {
+          'surfaceId': _surfaceId,
+          'catalogId': kA2uiBasicCatalogId,
+        },
+      },
+      {
+        'version': version,
+        'updateComponents': {
+          'surfaceId': _surfaceId,
+          'components': [
+            {
+              'id': 'root',
+              'component': 'Column',
               'children': ['headline', 'subtext', 'restart_btn'],
             },
-          ),
-          genui.Component(
-            id: 'headline',
-            type: 'Text',
-            properties: {'text': headline, 'variant': 'h2'},
-          ),
-          genui.Component(
-            id: 'subtext',
-            type: 'Text',
-            properties: {'text': subtext, 'variant': 'body'},
-          ),
-          const genui.Component(
-            id: 'restart_label',
-            type: 'Text',
-            properties: {'text': 'Restart form'},
-          ),
-          genui.Component(
-            id: 'restart_btn',
-            type: 'Button',
-            properties: {
+            {
+              'id': 'headline',
+              'component': 'Text',
+              'text': headline,
+              'variant': 'h2',
+            },
+            {
+              'id': 'subtext',
+              'component': 'Text',
+              'text': subtext,
+              'variant': 'body',
+            },
+            {
+              'id': 'restart_label',
+              'component': 'Text',
+              'text': 'Restart form',
+            },
+            {
+              'id': 'restart_btn',
+              'component': 'Button',
               'child': 'restart_label',
               'variant': 'primary',
               'action': {
                 'event': {'name': widget.restartActionName},
               },
             },
-          ),
-        ],
-      ),
-    );
+          ],
+        },
+      },
+    ]);
   }
 
   @override
@@ -223,7 +236,8 @@ class _A2uiOutcomeRendererState extends State<A2uiOutcomeRenderer> {
     final showFallbackBadge = kDebugMode && _usedFallback;
     final footerText = _usedFallback
         ? 'fallback A2UI tree (LLM emit unavailable)'
-        : 'rendered live by Vertex via flutter/genui (A2UI v0.9)';
+        : 'rendered live by Vertex via a2ui_flutter (A2UI v0.9)';
+    final surface = _processor.model.getSurface(_surfaceId);
     final footerIcon =
         _usedFallback ? Icons.warning_amber_rounded : Icons.electric_bolt;
 
@@ -256,9 +270,9 @@ class _A2uiOutcomeRendererState extends State<A2uiOutcomeRenderer> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: genui.Surface(
-                surfaceContext: _controller.contextFor(_surfaceId),
-              ),
+              child: surface == null
+                  ? const SizedBox.shrink()
+                  : A2uiSurface(key: ObjectKey(surface), surface: surface),
             ),
           ),
           Padding(

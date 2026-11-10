@@ -823,13 +823,13 @@ class _AboutDialog extends StatelessWidget {
               ),
               SizedBox(height: 8),
               Text(
-                "Google's A2UI protocol (a2ui.org) and the flutter/genui SDK "
+                "Google's A2UI protocol (a2ui.org) and the a2ui_flutter SDK "
                 'let an agent draw a UI per turn. genuiform is a layer above '
                 "that: where A2UI asks \"what should the UI look like this "
                 'turn?", genuiform asks "what should we ask next, given hard '
                 'invariants on what may ever be collected and where the form '
                 'may land?". The workbench closes the live round-trip: Vertex '
-                'emits A2UI v0.9 JSON per outcome, flutter/genui renders the '
+                'emits A2UI v0.9 JSON per outcome, a2ui_flutter renders the '
                 'Surface, and the in-Surface Restart button fires back through '
                 'an A2UI action — all while the form-collection loop stays '
                 "inside genuiform's typed primitives.",

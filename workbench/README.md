@@ -41,7 +41,7 @@ flutter run -d chrome --dart-define=GEMINI_API_KEY=AIza...
 If the key is not set at compile time, the workbench shows a paste panel.
 
 To enable the full A2UI round-trip (Gemini emits A2UI v0.9 JSON per outcome,
-rendered live via `flutter/genui`, with an in-Surface Restart action), add:
+rendered live via `a2ui_flutter`, with an in-Surface Restart action), add:
 
 ```
   --dart-define=USE_A2UI_HANDOFF=true

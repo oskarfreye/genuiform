@@ -39,8 +39,7 @@ dependencies:
     path: ../
 
   # Shared A2UI v0.9 outcome-screen plumbing (option C in A2UI_AGENDA.md).
-  # Owns the genui: 0.9.0 dep transitively — pinned exactly for the May 9
-  # hackathon (see A2UI_C_V2_SPEC.md §5.5).
+  # Owns the a2ui_core and a2ui_flutter deps transitively.
   genuiform_a2ui:
     path: ../a2ui
 

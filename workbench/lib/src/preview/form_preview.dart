@@ -204,7 +204,7 @@ class _FormPreviewState extends State<FormPreview>
 
   @override
   Widget build(BuildContext context) {
-    // When an A2UI handoff is active, show the genui-rendered outcome screen.
+    // When an A2UI handoff is active, show the A2UI-rendered outcome screen.
     if (_activeA2uiHandoff != null) {
       return A2uiOutcomeRenderer(
         outcomeId: _activeA2uiHandoff!.outcomeId,

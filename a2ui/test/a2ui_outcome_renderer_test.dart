@@ -26,9 +26,9 @@
 
 import 'dart:async';
 
+import 'package:a2ui_flutter/a2ui_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:genui/genui.dart' as genui;
 
 import 'package:genuiform_a2ui/genuiform_a2ui.dart';
 
@@ -51,10 +51,10 @@ const String _kCreateSurfaceChunk =
     '{"version":"v0.9","createSurface":{"surfaceId":"outcome_book_call","catalogId":"https://a2ui.org/specification/v0_9/basic_catalog.json","sendDataModel":false}}';
 
 const String _kUpdateComponentsChunk =
-    '{"version":"v0.9","updateComponents":{"surfaceId":"outcome_book_call","components":[{"id":"root","component":"Column","properties":{"children":["headline","restart_btn"]}},'
-    '{"id":"headline","component":"Text","properties":{"text":"Book a call","variant":"h2"}},'
-    '{"id":"restart_label","component":"Text","properties":{"text":"Restart"}},'
-    '{"id":"restart_btn","component":"Button","properties":{"child":"restart_label","variant":"primary","action":{"event":{"name":"genuiform/restart"}}}}]}}';
+    '{"version":"v0.9","updateComponents":{"surfaceId":"outcome_book_call","components":[{"id":"root","component":"Column","children":["headline","restart_btn"]},'
+    '{"id":"headline","component":"Text","text":"Book a call","variant":"h2"},'
+    '{"id":"restart_label","component":"Text","text":"Restart"},'
+    '{"id":"restart_btn","component":"Button","child":"restart_label","variant":"primary","action":{"event":{"name":"genuiform/restart"}}}]}}';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -86,8 +86,8 @@ void main() {
         // Let the surface build.
         await tester.pumpAndSettle();
 
-        // The genui.Surface widget should be present.
-        expect(find.byType(genui.Surface), findsOneWidget);
+        // The A2uiSurface widget should be present.
+        expect(find.byType(A2uiSurface), findsOneWidget);
 
         // The footer with the live-path text should be visible.
         expect(
@@ -126,8 +126,9 @@ void main() {
         // Allow microtasks + frame rebuilds to settle.
         await tester.pumpAndSettle();
 
-        // The genui.Surface widget should be present.
-        expect(find.byType(genui.Surface), findsOneWidget);
+        // The A2uiSurface widget should be present and show the streamed tree.
+        expect(find.byType(A2uiSurface), findsOneWidget);
+        expect(find.text('Book a call'), findsOneWidget);
 
         // No fallback badge — we received messages successfully.
         expect(find.textContaining('fallback (LLM emit failed)'), findsNothing);
@@ -158,7 +159,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // The Surface still renders (v1 fallback was seeded).
-        expect(find.byType(genui.Surface), findsOneWidget);
+        expect(find.byType(A2uiSurface), findsOneWidget);
 
         // In kDebugMode (always true in tests), the fallback badge appears.
         expect(
@@ -189,7 +190,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Surface present (v1 fallback rendered).
-        expect(find.byType(genui.Surface), findsOneWidget);
+        expect(find.byType(A2uiSurface), findsOneWidget);
 
         // Fallback badge shown in debug mode.
         expect(

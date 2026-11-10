@@ -1,32 +1,24 @@
-// Subscribes to `genui.SurfaceController.onSubmit` and translates the
+// Subscribes to the A2UI processor's action events and translates the
 // Restart action carried by an in-Surface Button into a Dart callback.
 //
 // ─── Subscription target ─────────────────────────────────────────────────────
 //
-// `genui.SurfaceController` exposes:
+// `MessageProcessor.model` (a `SurfaceGroupModel`) exposes:
 //
-//   Stream<ChatMessage> get onSubmit
+//   EventSource<A2uiRendererAction> get onAction
 //
 // When the user taps a Button whose `action` is `{"event":{"name":"..."}}`,
-// the catalog's `_handlePress` calls
-// `controller.handleUiEvent(UserActionEvent(...))`, which adds a
-// `ChatMessage` carrying a `UiInteractionPart` (MIME
-// `application/vnd.genui.interaction+json`). The interaction JSON has the
-// shape `{"version":"v0.9","action":{"name":"...","..."}}`.
-//
-// We listen on `onSubmit` directly without constructing a
-// `genui.Conversation` — `Conversation` adds LLM-transport wiring we don't
-// need here, so we'd just be paying for a no-op transport stub.
+// the basic catalog's Button resolves the action and dispatches it on its
+// surface, and the processor forwards it to `onAction` as an
+// `A2uiRendererAction` carrying the event `name`.
 
-import 'dart:async';
-import 'dart:convert';
-
+import 'package:a2ui_core/a2ui_core.dart';
+import 'package:a2ui_flutter/a2ui_flutter.dart';
 import 'package:flutter/foundation.dart';
-import 'package:genui/genui.dart' as genui;
 
 import 'a2ui_outcome_prompt.dart';
 
-/// Subscribes to [genui.SurfaceController.onSubmit] and fires [onRestart]
+/// Subscribes to the `onAction` events of [controller] and fires [onRestart]
 /// when an action with name [actionName] arrives. All other action names
 /// are ignored (logged in debug mode).
 ///
@@ -40,57 +32,31 @@ class A2uiActionHandler {
     this.actionName = kA2uiRestartAction,
   });
 
-  final genui.SurfaceController controller;
+  final MessageProcessor<ComponentImplementation> controller;
   final VoidCallback onRestart;
 
   /// The A2UI action name routed to [onRestart].  Defaults to
   /// [kA2uiRestartAction].
   final String actionName;
 
-  StreamSubscription<genui.ChatMessage>? _sub;
+  Subscription? _sub;
 
   /// Idempotent — calling [start] twice is a no-op.
   void start() {
     if (_sub != null) return;
-    _sub = controller.onSubmit.listen(_handleMessage);
+    _sub = controller.model.onAction.subscribe(_handleAction);
   }
 
   void dispose() {
-    _sub?.cancel();
+    _sub?.unsubscribe();
     _sub = null;
   }
 
-  void _handleMessage(genui.ChatMessage message) {
-    final interactionParts = message.parts
-        .whereType<genui.DataPart>()
-        .where((p) => p.mimeType == genui.UiPartConstants.interactionMimeType);
-
-    for (final part in interactionParts) {
-      _handleInteractionPart(part);
-    }
-  }
-
-  void _handleInteractionPart(genui.DataPart part) {
-    try {
-      final wrapper =
-          jsonDecode(utf8.decode(part.bytes)) as Map<String, Object?>;
-      final interactionJson = wrapper['interaction'] as String?;
-      if (interactionJson == null) return;
-
-      final payload = jsonDecode(interactionJson) as Map<String, Object?>;
-      final action = payload['action'] as Map<String, Object?>?;
-      if (action == null) return;
-
-      final name = action['name'] as String?;
-      if (name == null) return;
-
-      if (name == actionName) {
-        onRestart();
-      } else {
-        debugPrint('A2uiActionHandler: ignoring unknown action "$name"');
-      }
-    } catch (e, stack) {
-      debugPrint('A2uiActionHandler: error decoding interaction part: $e\n$stack');
+  void _handleAction(A2uiRendererAction action) {
+    if (action.name == actionName) {
+      onRestart();
+    } else {
+      debugPrint('A2uiActionHandler: ignoring unknown action "${action.name}"');
     }
   }
 }
