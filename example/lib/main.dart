@@ -133,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: const Text('A2UI outcome screens'),
                     subtitle: Text(
                       _useA2ui.value
-                          ? 'Terminal outcomes render via flutter/genui '
+                          ? 'Terminal outcomes render via a2ui_flutter '
                               '(A2UI v0.9). Gemini emits the tree; falls '
                               'back to a hand-crafted tree on timeout/error.'
                           : 'Terminal outcomes show a SnackBar with the '

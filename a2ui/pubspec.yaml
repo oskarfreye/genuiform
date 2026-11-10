@@ -1,5 +1,5 @@
 name: genuiform_a2ui
-description: "Shared A2UI v0.9 outcome-screen plumbing for genuiform — Vertex emit, transport adapter wiring, fallback rendering, action handler. Used by genuiform_workbench and the example app."
+description: "Shared A2UI v0.9 outcome-screen plumbing for genuiform — Vertex emit, message processor wiring, fallback rendering, action handler. Used by genuiform_workbench and the example app."
 publish_to: 'none'
 version: 0.1.0-dev
 
@@ -13,9 +13,9 @@ dependencies:
   genuiform:
     path: ../
 
-  # A2UI v0.9 SDK from Google. Pinned exactly (no caret) for the May 9 2026
-  # hackathon — see A2UI_AGENDA.md and A2UI_C_V2_SPEC.md §5.5.
-  genui: 0.9.0
+  # A2UI Dart SDKs. The outcome screen still speaks A2UI v0.9 on the wire.
+  a2ui_core: ^0.6.0
+  a2ui_flutter: ^0.2.0
 
 dev_dependencies:
   flutter_test:

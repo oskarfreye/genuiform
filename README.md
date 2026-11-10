@@ -37,20 +37,20 @@ Static multi-step forms have three failure modes:
 
 ## 1.5 Relation to A2UI
 
-Google's [A2UI protocol](https://a2ui.org) (and the [`flutter/genui`](https://pub.dev/packages/genui) SDK that implements it) lets an AI agent emit a UI structure each turn — components, data bindings, layout — and have the client render it. **A2UI is a UI canvas for agents.**
+Google's [A2UI protocol](https://a2ui.org) (and the [`a2ui_flutter`](https://pub.dev/packages/a2ui_flutter) SDK that implements it) lets an AI agent emit a UI structure each turn — components, data bindings, layout — and have the client render it. **A2UI is a UI canvas for agents.**
 
 `genuiform` is a layer above that. Where A2UI asks *"what should the UI look like this turn?"*, genuiform asks *"what should we ask next, given an invariant of what may ever be collected and where the form may ever land?"*. The four primitives below — `Contract`, `Constraint`, `Posture`, `Outcome` — are the runtime invariants that survive any per-step UI freedom the LLM exercises.
 
-| | A2UI / `flutter/genui` | `genuiform` |
+| | A2UI / `a2ui_flutter` | `genuiform` |
 |---|---|---|
 | Who designs the UI | the agent (per turn) | the developer (once, via the four primitives) |
 | Per-turn payload | UI components + data bindings | a typed `QuizStepSpec` |
 | Runtime guarantees | none — the agent draws what it wants | `Contract` / `Constraint` / `Posture` / `Outcome` are hard |
 | Use when | you want generative UIs everywhere | you want generative UIs *bounded* by a typed schema, hard never-collect rules, and a closed set of allowed completions |
 
-The two compose well. The hackathon workbench can render terminal outcome screens via `flutter/genui` (see `A2UI_AGENDA.md` for status); the form-collection loop itself stays inside genuiform's typed primitives.
+The two compose well. The hackathon workbench can render terminal outcome screens via `a2ui_flutter` (see `A2UI_AGENDA.md` for status); the form-collection loop itself stays inside genuiform's typed primitives.
 
-The workbench demonstrates the full round-trip in one integrated flow: form completes → Gemini emits A2UI v0.9 JSON → `flutter/genui` renders the Surface → the in-Surface Restart button dispatches an A2UI action → the workbench restarts the form. A2UI plumbing lives in the separate `genuiform_a2ui` package (`a2ui/`) so apps that don't need it don't pull in `genui`. The library itself (`genuiform`) is unchanged — it remains the constraints layer above, not an A2UI-native component. See `A2UI_C_V2_SPEC.md` for the implementation spec and `www/demo/README.md` for how to run the workbench.
+The workbench demonstrates the full round-trip in one integrated flow: form completes → Gemini emits A2UI v0.9 JSON → `a2ui_flutter` renders the Surface → the in-Surface Restart button dispatches an A2UI action → the workbench restarts the form. A2UI plumbing lives in the separate `genuiform_a2ui` package (`a2ui/`) so apps that don't need it don't pull in `a2ui_core` and `a2ui_flutter`. The library itself (`genuiform`) is unchanged — it remains the constraints layer above, not an A2UI-native component. See `A2UI_C_V2_SPEC.md` for the implementation spec and `www/demo/README.md` for how to run the workbench.
 
 ---
 
@@ -726,7 +726,7 @@ www/                                      # deployed artifacts (SST on AWS)
 - [x] Material 3 dark UI with branded splash screen
 - [x] URL hash state (gzip + base64url), mock mode (`USE_MOCK=true`)
 - [x] DSL agent chat panel — AI-assisted form generation inside the workbench
-- [x] `genuiform_a2ui` package: Gemini emits A2UI v0.9 JSON per outcome, `flutter/genui` renders the Surface, in-Surface Restart action wired through
+- [x] `genuiform_a2ui` package: Gemini emits A2UI v0.9 JSON per outcome, `a2ui_flutter` renders the Surface, in-Surface Restart action wired through
 - [x] Landing page at `genuiform.draht.dev`, workbench at `workbench.genuiform.draht.dev` (SST on AWS)
 
 ### 13.3 Post-hackathon roadmap
@@ -748,7 +748,7 @@ The workbench is deployed at **[workbench.genuiform.draht.dev](https://workbench
 - Switch between 4 bundled scenarios from the top-bar dropdown
 - Adjust the model and temperature mid-session
 - Open the DSL agent chat to generate or modify a form in plain English
-- Enable the A2UI outcome screen (`USE_A2UI_HANDOFF=true` at build time) to see Gemini emit a live `flutter/genui` Surface per outcome
+- Enable the A2UI outcome screen (`USE_A2UI_HANDOFF=true` at build time) to see Gemini emit a live `a2ui_flutter` Surface per outcome
 
 Run locally:
 

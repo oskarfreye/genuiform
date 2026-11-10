@@ -11,7 +11,7 @@
 /// - [A2uiOutcomeLoader] — first-chunk timeout + summary builder around the
 ///   emitter; suitable for piping into [A2uiOutcomeRenderer].
 /// - [A2uiOutcomeRenderer] — Flutter widget that renders the live A2UI tree
-///   via `genui.Surface`, with an automatic hand-crafted v1 fallback.
+///   via `A2uiSurface`, with an automatic hand-crafted v1 fallback.
 /// - [A2uiActionHandler] — translates the in-Surface Restart action back
 ///   into a Dart callback.
 library;

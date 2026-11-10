@@ -17,7 +17,9 @@
 
 import 'simulated_handoff.dart';
 
-/// Catalog identifier for the A2UI v0.9 BasicCatalogItems set.
+/// Catalog identifier for the A2UI v0.9 basic catalog, as genui named it.
+///
+/// `A2uiOutcomeRenderer` registers the basic catalog under this id.
 const String kA2uiBasicCatalogId =
     'https://a2ui.org/specification/v0_9/basic_catalog.json';
 

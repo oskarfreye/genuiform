@@ -4,18 +4,16 @@
 //   1. Positive: tapping a Button with action `genuiform/restart` fires onRestart.
 //   2. Negative: tapping a Button with action `workbench/other` does NOT fire onRestart.
 //
-// The test drives a real `genui.SurfaceController` + `genui.Surface` widget so
-// that the full button→dispatchEvent→onSubmit chain is exercised — not mocked.
-//
-// No LLM transport or `genui.Conversation` is required because
-// `A2uiActionHandler` subscribes directly to `SurfaceController.onSubmit`
-// (see the file header of a2ui_action_handler.dart for the full rationale).
+// The test drives a real `MessageProcessor` + `A2uiSurface` widget so that
+// the full button→dispatchAction→onAction chain is exercised — not mocked.
 
 // ignore_for_file: lines_longer_than_80_chars
 
+import 'package:a2ui_core/a2ui_core.dart';
+import 'package:a2ui_flutter/a2ui_flutter.dart';
+import 'package:a2ui_flutter/v0_9/basic_catalog.dart' as v0_9;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:genui/genui.dart' as genui;
 
 import 'package:genuiform_a2ui/genuiform_a2ui.dart';
 
@@ -32,69 +30,72 @@ const _kOtherLabelId = 'other_label';
 
 /// Builds the complete surface with two buttons: one `genuiform/restart` and
 /// one `workbench/other`.
-void _seedTwoButtonSurface(genui.SurfaceController controller) {
-  controller.handleMessage(
-    genui.CreateSurface(surfaceId: _kSurfaceId, catalogId: _kCatalogId),
-  );
-  controller.handleMessage(
-    genui.UpdateComponents(
-      surfaceId: _kSurfaceId,
-      components: [
-        const genui.Component(
-          id: 'root',
-          type: 'Column',
-          properties: {
+void _seedTwoButtonSurface(
+  MessageProcessor<ComponentImplementation> controller,
+) {
+  controller.processMessages([
+    {
+      'version': 'v0.9',
+      'createSurface': {'surfaceId': _kSurfaceId, 'catalogId': _kCatalogId},
+    },
+    {
+      'version': 'v0.9',
+      'updateComponents': {
+        'surfaceId': _kSurfaceId,
+        'components': [
+          {
+            'id': 'root',
+            'component': 'Column',
             'children': [_kButtonId, _kOtherButtonId],
           },
-        ),
-        const genui.Component(
-          id: _kLabelId,
-          type: 'Text',
-          properties: {'text': 'Restart form'},
-        ),
-        const genui.Component(
-          id: _kButtonId,
-          type: 'Button',
-          properties: {
+          {'id': _kLabelId, 'component': 'Text', 'text': 'Restart form'},
+          {
+            'id': _kButtonId,
+            'component': 'Button',
             'child': _kLabelId,
             'variant': 'primary',
             'action': {
               'event': {'name': 'genuiform/restart'},
             },
           },
-        ),
-        const genui.Component(
-          id: _kOtherLabelId,
-          type: 'Text',
-          properties: {'text': 'Other action'},
-        ),
-        const genui.Component(
-          id: _kOtherButtonId,
-          type: 'Button',
-          properties: {
+          {'id': _kOtherLabelId, 'component': 'Text', 'text': 'Other action'},
+          {
+            'id': _kOtherButtonId,
+            'component': 'Button',
             'child': _kOtherLabelId,
             'action': {
               'event': {'name': 'workbench/other'},
             },
           },
-        ),
-      ],
-    ),
-  );
+        ],
+      },
+    },
+  ]);
+}
+
+/// Dispatches [name] on the seeded surface as if a Button had been tapped.
+void _dispatchAction(
+  MessageProcessor<ComponentImplementation> controller,
+  String name,
+) {
+  controller.model.getSurface(_kSurfaceId)!.dispatchAction({
+    'event': {'name': name},
+  }, 'fake_btn');
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 void main() {
   group('A2uiActionHandler', () {
-    late genui.SurfaceController controller;
+    late MessageProcessor<ComponentImplementation> controller;
     late A2uiActionHandler handler;
     late int restartCallCount;
 
     setUp(() {
       restartCallCount = 0;
-      controller = genui.SurfaceController(
-        catalogs: [genui.BasicCatalogItems.asCatalog()],
+      controller = MessageProcessor<ComponentImplementation>(
+        catalogs: [v0_9.basicCatalog().derive(catalogId: _kCatalogId)],
+        validationConfig: ValidationConfig.strict,
       );
       handler = A2uiActionHandler(
         controller: controller,
@@ -117,14 +118,14 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: Scaffold(
-              body: genui.Surface(
-                surfaceContext: controller.contextFor(_kSurfaceId),
+              body: A2uiSurface(
+                surface: controller.model.getSurface(_kSurfaceId)!,
               ),
             ),
           ),
         );
 
-        // Let async rendering settle (surface builds CatalogItem widgets).
+        // Let async rendering settle (surface builds component widgets).
         await tester.pumpAndSettle();
 
         // Tap the restart button (identified by its label text).
@@ -145,8 +146,8 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: Scaffold(
-              body: genui.Surface(
-                surfaceContext: controller.contextFor(_kSurfaceId),
+              body: A2uiSurface(
+                surface: controller.model.getSurface(_kSurfaceId)!,
               ),
             ),
           ),
@@ -170,19 +171,11 @@ void main() {
       // Call start() a second time.
       handler.start();
 
-      // Directly fire a ChatMessage through the controller to simulate a
-      // button tap without needing a widget tree.
+      // Dispatch an action on the surface to simulate a button tap without
+      // needing a widget tree.
       // We verify by counting: if start() were NOT idempotent, two subscriptions
       // would both call onRestart → restartCallCount == 2.
-      //
-      // Since we can't tap without a widget, we use a simpler approach:
-      // manually call handleUiEvent to put a message on onSubmit.
-      controller.handleUiEvent(
-        genui.UserActionEvent(
-          name: 'genuiform/restart',
-          sourceComponentId: 'fake_btn',
-        ),
-      );
+      _dispatchAction(controller, 'genuiform/restart');
 
       // Give the stream a microtask to deliver the event.
       await Future<void>.delayed(Duration.zero);
@@ -196,14 +189,10 @@ void main() {
 
     // ── dispose() cancels subscription ────────────────────────────────────────
     test('dispose() cancels subscription so no further callbacks fire', () async {
+      _seedTwoButtonSurface(controller);
       handler.dispose();
 
-      controller.handleUiEvent(
-        genui.UserActionEvent(
-          name: 'genuiform/restart',
-          sourceComponentId: 'fake_btn',
-        ),
-      );
+      _dispatchAction(controller, 'genuiform/restart');
 
       await Future<void>.delayed(Duration.zero);
 
